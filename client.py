@@ -1,5 +1,6 @@
 import threading
 import socket
+import json
 
 
 class Client:
@@ -9,28 +10,55 @@ class Client:
         self.nickname = input("Choose a nickname: ")
         self.running = True
 
+
+    
+    def send_json(self, response):
+        response_json = json.dumps(response).encode('utf-8')
+        self.client.send(response_json)
+
+
+    def recieve_json(self):
+        data = self.client.recv(1024).decode('utf-8')
+        data_json = json.loads(data)
+        return data_json
+
     def receive(self):
         while self.running:
             try:
-                message = self.client.recv(1024).decode('ascii')
-                if message == 'NICK':
-                    self.client.send(self.nickname.encode('ascii'))
-                else:
-                    print(message)
+                data = self.recieve_json()
+                print(f"Otrzymano: {data}")
+                if data.get("field") == "nickname":
+                    response = {"type": "nickname",
+                                "nickname": self.nickname}
+                    print(f"Wysłano: {response}")
+                    self.send_json(response)
+                elif data.get("type") == "message":
+                    print(f"{data.get("nickname"): {data.get("text")}}")
             except:
                 print("error")
                 self.running = False
                 break
+        print("Server closed connection.")
         self.client.close()
 
     def write(self):
         while self.running:
             message = input(f"{self.nickname}: ")
             if message.strip() == "/exit":
-                self.client.send("/exit".encode("ascii"))
+                response = {"type": "command",
+                            "command": "EXIT"}
+                self.send_json(response)
                 self.running = False
+            elif message.strip() == "/users":
+                response = {"type": "command",
+                            "command": "USERS"}
+                self.send_json(response)
             else:
-                self.client.send(message.encode('ascii'))
+                response = {"type": "message",
+                            "nickname": self.nickname,
+                            "text": message}
+                print(response)
+                self.send_json(response)
     
 
     def run(self):
