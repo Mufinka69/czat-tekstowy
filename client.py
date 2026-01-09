@@ -2,6 +2,7 @@ import threading
 import socket
 import json
 
+import traceback
 
 class Client:
     def __init__(self, host, port):
@@ -26,16 +27,17 @@ class Client:
         while self.running:
             try:
                 data = self.recieve_json()
-                print(f"Otrzymano: {data}")
+                # print(f"Otrzymano: {data}")
                 if data.get("field") == "nickname":
                     response = {"type": "nickname",
                                 "nickname": self.nickname}
-                    print(f"Wysłano: {response}")
+                    # print(f"Wysłano: {response}")
                     self.send_json(response)
                 elif data.get("type") == "message":
-                    print(f"{data.get("nickname"): {data.get("text")}}")
-            except:
-                print("error")
+                    print(f'{data.get("nickname")}: {data.get("text")}')
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
                 self.running = False
                 break
         print("Server closed connection.")
@@ -43,7 +45,7 @@ class Client:
 
     def write(self):
         while self.running:
-            message = input(f"{self.nickname}: ")
+            message = input()
             if message.strip() == "/exit":
                 response = {"type": "command",
                             "command": "EXIT"}
@@ -57,7 +59,7 @@ class Client:
                 response = {"type": "message",
                             "nickname": self.nickname,
                             "text": message}
-                print(response)
+                # print(response)
                 self.send_json(response)
     
 

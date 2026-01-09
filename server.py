@@ -13,6 +13,7 @@ class Commands(Enum):
     BROADCAST = "/broadcast"
     KICK = "/kick"
     CLS = "CLS"
+    MESSAGE = "message"
 
 class User:
     def __init__(self, client, nickname):
@@ -45,8 +46,8 @@ class Server:
                 data_json = json.loads(data)
 
 
-                if data_json['type'] == 'command':
-                    command = Commands(data_json['command'])
+                if data_json["type"] == "command":
+                    command = Commands(data_json["command"])
 
                     if command == Commands.USERS:
                         users_list  = [u.nickname for u in self.users]
@@ -65,12 +66,12 @@ class Server:
                         print(f"{user.nickname} left the chat")
                         raise Exception("User exited")
                     
-                elif data_json['type'] == 'message':
+                elif data_json["type"] == "message":
                     response = {"type": "message",
                                 "nickname":user.nickname,
-                                "text": data_json['text']
+                                "text": data_json["text"]
                                 }
-                    self.broadcast(response, None)
+                    self.broadcast(response, user)
                     
             except:
                 if user in self.users:
