@@ -5,6 +5,8 @@ import json
 from enum import Enum
 
 
+PRINTY_ZAJEBANE = True
+
 
 
 class Commands(Enum):
@@ -30,7 +32,7 @@ class Server:
         self.server = None
 
     def broadcast(self, message, user1):
-        message_json = json.dumps(message).encode('utf-8')
+        message_json = (json.dumps(message) + "\n").encode('utf-8')
         for user in self.users:
             if user != user1:
                 user.client.send(message_json)
@@ -54,14 +56,14 @@ class Server:
                         response = {"type": "system",
                                     "command": "USERS",
                                     "users": users_list
-                        }
+                                    }
                         user.client.send(json.dumps(response).encode("utf-8"))
 
                     elif command == Commands.EXIT:
                         response = {"type": "system",
                                     "command": "EXIT",
                                     "text": f"{user.nickname} left the chat"
-                        }
+                                    }
                         self.broadcast(response, None)
                         print(f"{user.nickname} left the chat")
                         raise Exception("User exited")
@@ -71,6 +73,7 @@ class Server:
                                 "nickname":user.nickname,
                                 "text": data_json["text"]
                                 }
+                    print(response)
                     self.broadcast(response, user)
                     
             except:
@@ -87,36 +90,42 @@ class Server:
     def is_valid_nickname(self, client):
         request  = {"type": "request",
                     "field": "nickname"}
-        client.send(json.dumps(request).encode('utf-8'))
-        # print(f"Wysłano {request}")
-        # while True:
-        data_b = client.recv(1024)
-        data_json = json.loads(data_b.decode('utf-8'))
-        # print(f"Otrzymano: {data_json}")
+        client.send((json.dumps(request) + "\n").encode('utf-8'))
+        if PRINTY_ZAJEBANE:
+            print(f"Wysłano {request}")
+        while True:
+            data_b = client.recv(1024)
+            data_json = json.loads(data_b.decode('utf-8'))
+            if PRINTY_ZAJEBANE:
+                print(f"Otrzymano: {data_json}")
+            nickname = data_json.get("nickname", "").strip()
 
-        nickname = data_json.get("nickname", "").strip()
-        # print(nickname)
+            if not (3 <= len(nickname) <= 15):
+                request  = {"type": "request",
+                            "field": "nickname"}
+                client.send((json.dumps(request) + "\n").encode('utf-8'))
+                if PRINTY_ZAJEBANE:
+                    print(f"Wysłano {request}")
+            else:
+                request = {"type": "success",
+                        "field": "nickname",
+                        "text": "Nickname accepted."}
+                client.send((json.dumps(request) + "\n").encode('utf-8'))
+                return nickname
+        # elif any(u.nickname == nickname for u in self.users):
+        #     request  = {"type": "request",
+        #                 "field": "nickname"}
+        #     client.send(json.dumps(request).encode('utf-8'))
+        # if any(c in " !@#$%^&*()" for c in nickname):
+        #     request  = {"type": "request",
+        #                 "field": "nickname"}
+        #     client.send(json.dumps(request).encode('utf-8'))
+        # else:
+            # request = {"type": "success",
+            #             "field": "nickname",
+            #            "text": "Nickname accepted."}
+            # client.send(json.dumps(request).encode('utf-8'))
             # break
-
-            # if not (1 <= len(nickname) <= 15):
-            #     request  = {"type": "request",
-            #                 "field": "nickname"}
-            #     client.send(json.dumps(request).encode('utf-8'))
-            # elif any(u.nickname == nickname for u in self.users):
-            #     request  = {"type": "request",
-            #                 "field": "nickname"}
-            #     client.send(json.dumps(request).encode('utf-8'))
-            # if any(c in " !@#$%^&*()" for c in nickname):
-            #     request  = {"type": "request",
-            #                 "field": "nickname"}
-            #     client.send(json.dumps(request).encode('utf-8'))
-            # else:
-                # request = {"type": "success",
-                #             "field": "nickname",
-                #            "text": "Nickname accepted."}
-                # client.send(json.dumps(request).encode('utf-8'))
-                # break
-        return nickname
 
     def accept_connections(self):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -141,19 +150,18 @@ class Server:
                         "command": "CONNECTED",
                         "text": "Coneccted to the server"
             }
-            print(f"Wysłano: {response}")
-            print("")
-            client.send(json.dumps(response).encode('utf-8'))
+            if PRINTY_ZAJEBANE:
+                print(f"Wysłano: {response}")
+            client.send((json.dumps(response) + "\n").encode('utf-8'))
             response = {"type":"system",
                         "command": "JOIN",
                         "nickname": nickname,
                         "text": f"{nickname} join the chat"
             }
-            print(f"Wysłano: {response}")
-            print("")
-            client.send(json.dumps(response).encode('utf-8'))
+            if PRINTY_ZAJEBANE:
+                print(f"Wysłano: {response}")
+            client.send((json.dumps(response) + "\n").encode('utf-8'))
             print(f"Nickname of the client is {nickname}!")
-            print("")
             thread = threading.Thread(target=self.handle_user, args=(user, ), daemon=True)
             thread.start()
 
@@ -169,44 +177,44 @@ class Server:
     #             break
 
 
-    # def close_server(self):
-    #     print("self.kill = true")
-    #     self.kill = True
-    #     self.server.close()
+    def close_server(self):
+        print("self.kill = true")
+        self.kill = True
+        self.server.close()
 
-    # def send_message(self, cmd):
-    #     message = cmd.split(" ", 1)[1]
-    #     self.broadcast(message, None)
+    def send_message(self, cmd):
+        message = cmd.split(" ", 1)[1]
+        self.broadcast(message, None)
 
-    # def clean_command_line(self):
-    #     os.system("cls" if os.name == "nt" else "clear")
+    def clean_command_line(self):
+        os.system("cls" if os.name == "nt" else "clear")
     
-    # def print_users(self):
-    #     print(f"Users: ", ", ".join(u.nickname for u in self.users))
+    def print_users(self):
+        print(f"Users: ", ", ".join(u.nickname for u in self.users))
 
 
-    # def cmd(self):
-    #     while not self.kill:
-    #         cmd = input("")
-    #         if cmd == "/exit":
-    #             self.close_server()
+    def cmd(self):
+        while not self.kill:
+            cmd = input("")
+            if cmd == "/exit":
+                self.close_server()
 
-    #         elif cmd == "/users":
-    #             self.print_users()
+            elif cmd == "/users":
+                self.print_users()
 
-    #         elif cmd == "/cls":
-    #             self.clean_command_line(cmd)
+            elif cmd == "/cls":
+                self.clean_command_line()
 
-    #         elif cmd.startswith("/broadcast "):
-    #             self.send_message(cmd)
+            elif cmd.startswith("/broadcast "):
+                self.send_message(cmd)
 
-    #         elif cmd.startswith("/kick "):
-    #             self.kick_user(cmd)
+            elif cmd.startswith("/kick "):
+                self.kick_user(cmd)
 
 
 
     def run(self):
-        # threading.Thread(target=self.cmd, daemon=True).start()
+        threading.Thread(target=self.cmd, daemon=True).start()
         self.accept_connections()
 
 

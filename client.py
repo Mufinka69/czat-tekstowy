@@ -8,32 +8,60 @@ class Client:
     def __init__(self, host, port):
         self.host = host
         self.port = port
-        self.nickname = input("Choose a nickname: ")
         self.running = True
+        self.nickname = None
+        self._file = None
 
 
     
     def send_json(self, response):
+        print(response)
         response_json = json.dumps(response).encode('utf-8')
         self.client.send(response_json)
 
 
     def recieve_json(self):
+        if self._file is None:
+            self._file = self.client.makefile("r")
+
+        line = self._file.readline()
+        if not line:
+            return None
+
+        msg = json.loads(line)
+        return msg
+
+
+    def recieve_json2(self):
         data = self.client.recv(1024).decode('utf-8')
+        print(f"Wiadomość -> {data}")
         data_json = json.loads(data)
         return data_json
+
+    def set_nickname(self):
+        while self.running:
+            try:
+                data = self.recieve_json()
+                if data.get("type") == "request" and data.get("field") == "nickname":
+                    nickname = input("Choose a nickname: ")
+                    response = {"type": "nickname",
+                                "nickname": nickname}
+                    self.send_json(response)
+                elif data.get("type") == "success" and data.get("field") == "nickname":
+                    self.nickname = nickname
+                    break
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
+                self.running = False
+                break
+
 
     def receive(self):
         while self.running:
             try:
                 data = self.recieve_json()
-                # print(f"Otrzymano: {data}")
-                if data.get("field") == "nickname":
-                    response = {"type": "nickname",
-                                "nickname": self.nickname}
-                    # print(f"Wysłano: {response}")
-                    self.send_json(response)
-                elif data.get("type") == "message":
+                if data.get("type") == "message":
                     print(f'{data.get("nickname")}: {data.get("text")}')
             except Exception as e:
                 print(e)
@@ -55,21 +83,25 @@ class Client:
                 response = {"type": "command",
                             "command": "USERS"}
                 self.send_json(response)
-            else:
+            elif message != "":
                 response = {"type": "message",
                             "nickname": self.nickname,
                             "text": message}
-                # print(response)
                 self.send_json(response)
     
 
-    def run(self):
+    def run(self):        
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client.connect((self.host, self.port))
 
+        print(1)
+        self.set_nickname()
+
+        print(2)
         recive_thread = threading.Thread(target=self.receive)
         recive_thread.start()
 
+        print(3)
         write_thread = threading.Thread(target=self.write)
         write_thread.start()
 
