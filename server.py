@@ -4,10 +4,13 @@ import os
 import json
 from enum import Enum
 
+import logging
+from logi_zajebane import setup_logger
 
-PRINTY_ZAJEBANE = True
+# PRINTY_ZAJEBANE = True
 
-
+setup_logger()
+logger = logging.getLogger(__name__)
 
 class Commands(Enum):
     EXIT = "EXIT"
@@ -28,6 +31,7 @@ class Server:
         self.host = host
         self.port = port
         self.users = []
+        self.users_lock = threading.Lock() 
         self.kill = False
         self.server = None
 
@@ -37,11 +41,28 @@ class Server:
             if user != user1:
                 user.client.send(message_json)
 
+    def send_json(self, json_file, client):
+        client.send((json.dumps(json_file) + "\n").encode('utf-8'))
+
+    def receive_json(self):
+        if self._file is None:
+            self._file = self.client.makefile("r", encoding = 'utf-8')
+
+        line = self._file.readline()
+        if not line:
+            return None
+
+        msg = json.loads(line)
+        logging.debug("receive_json: %s", msg)
+        return msg
+
+
     def handle_user(self, user):
         while not self.kill:
             try:
                 data_b = user.client.recv(1024)
                 if not data_b:
+                    logging.exception("Disconnected")
                     raise Exception("Disconnected")
                 
                 data = data_b.decode('utf-8')
@@ -57,7 +78,14 @@ class Server:
                                     "command": "USERS",
                                     "users": users_list
                                     }
-                        user.client.send(json.dumps(response).encode("utf-8"))
+                    if command == Commands.USERS:
+                        users_list  = [u.nickname for u in self.users]
+                        response = {"type": "system",
+                                    "command": "USERS",
+                                    "users": users_list
+                                    }
+                        self.send_json(response, user.client)
+                        logging.debug(f"{user.nickname} -> /users")
 
                     elif command == Commands.EXIT:
                         response = {"type": "system",
@@ -65,7 +93,8 @@ class Server:
                                     "text": f"{user.nickname} left the chat"
                                     }
                         self.broadcast(response, None)
-                        print(f"{user.nickname} left the chat")
+                        logging.debug(f"{user.nickname} left the chat")
+                        # print(f"{user.nickname} left the chat")
                         raise Exception("User exited")
                     
                 elif data_json["type"] == "message":
@@ -90,77 +119,69 @@ class Server:
     def is_valid_nickname(self, client):
         request  = {"type": "request",
                     "field": "nickname"}
-        client.send((json.dumps(request) + "\n").encode('utf-8'))
-        if PRINTY_ZAJEBANE:
-            print(f"Wysłano {request}")
+        # client.send((json.dumps(request) + "\n").encode('utf-8'))
+        self.send_json(request, client)
+        logging.debug(f"Wysłano {request}")
         while True:
             data_b = client.recv(1024)
             data_json = json.loads(data_b.decode('utf-8'))
-            if PRINTY_ZAJEBANE:
-                print(f"Otrzymano: {data_json}")
+            logging.debug(f"Otrzymano: {data_json}")
             nickname = data_json.get("nickname", "").strip()
 
             if not (3 <= len(nickname) <= 15):
                 request  = {"type": "request",
                             "field": "nickname"}
-                client.send((json.dumps(request) + "\n").encode('utf-8'))
-                if PRINTY_ZAJEBANE:
-                    print(f"Wysłano {request}")
+                self.send_json(request, client)
+            elif any(u.nickname == nickname for u in self.users):
+                request  = {"type": "request",
+                            "field": "nickname"}
+                self.send_json(request, client)
+            elif any(c in " !@#$%^&*()" for c in nickname):
+                request  = {"type": "request",
+                            "field": "nickname"}
+                self.send_json(request, client)
             else:
                 request = {"type": "success",
                         "field": "nickname",
                         "text": "Nickname accepted."}
-                client.send((json.dumps(request) + "\n").encode('utf-8'))
+                self.send_json(request, client)
                 return nickname
-        # elif any(u.nickname == nickname for u in self.users):
-        #     request  = {"type": "request",
-        #                 "field": "nickname"}
-        #     client.send(json.dumps(request).encode('utf-8'))
-        # if any(c in " !@#$%^&*()" for c in nickname):
-        #     request  = {"type": "request",
-        #                 "field": "nickname"}
-        #     client.send(json.dumps(request).encode('utf-8'))
-        # else:
-            # request = {"type": "success",
-            #             "field": "nickname",
-            #            "text": "Nickname accepted."}
-            # client.send(json.dumps(request).encode('utf-8'))
-            # break
 
     def accept_connections(self):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.bind((self.host, self.port))
         self.server.listen()
-
-        print("Server started ...")
+        
+        logging.info("Server started ...")
 
         while not self.kill:
             try:
                 client, addr = self.server.accept()
             except OSError:
                 break
-
-            print(f"Coneccted with {str(addr)}")
+            
+            logging.info(f"Coneccted with {str(addr)}")
 
             nickname = self.is_valid_nickname(client)
             user = User(client, nickname)
-            self.users.append(user)
-            print("Users:", ", ".join(a.nickname for a in self.users))
+            self.users_lock = threading.Lock()
+            with self.users_lock:
+                self.users.append(user)
+
+            logging.info("Users: %s", ", ".join(a.nickname for a in self.users))
             response = {"type":"system",
                         "command": "CONNECTED",
                         "text": "Coneccted to the server"
             }
-            if PRINTY_ZAJEBANE:
-                print(f"Wysłano: {response}")
-            client.send((json.dumps(response) + "\n").encode('utf-8'))
+            # client.send((json.dumps(response) + "\n").encode('utf-8'))
+            self.send_json(response, client)
             response = {"type":"system",
                         "command": "JOIN",
                         "nickname": nickname,
                         "text": f"{nickname} join the chat"
             }
-            if PRINTY_ZAJEBANE:
-                print(f"Wysłano: {response}")
-            client.send((json.dumps(response) + "\n").encode('utf-8'))
+            self.send_json(response, client)
+            # client.send((json.dumps(response) + "\n").encode('utf-8'))
             print(f"Nickname of the client is {nickname}!")
             thread = threading.Thread(target=self.handle_user, args=(user, ), daemon=True)
             thread.start()
@@ -181,6 +202,8 @@ class Server:
         print("self.kill = true")
         self.kill = True
         self.server.close()
+        for u in self.users:
+            u.client.close()
 
     def send_message(self, cmd):
         message = cmd.split(" ", 1)[1]

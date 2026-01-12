@@ -4,6 +4,12 @@ import json
 
 import traceback
 
+import logging
+from logi_zajebane import setup_logger
+
+setup_logger()
+logger = logging.getLogger(__name__)
+
 class Client:
     def __init__(self, host, port):
         self.host = host
@@ -15,33 +21,35 @@ class Client:
 
     
     def send_json(self, response):
-        print(response)
-        response_json = json.dumps(response).encode('utf-8')
+        response_json = (json.dumps(response) + "\n").encode('utf-8')
+        logging.debug("send_json: %s", response_json)
         self.client.send(response_json)
 
 
-    def recieve_json(self):
+    def receive_json(self):
         if self._file is None:
-            self._file = self.client.makefile("r")
+            self._file = self.client.makefile("r", encoding = 'utf-8')
 
         line = self._file.readline()
         if not line:
             return None
 
         msg = json.loads(line)
+        logging.debug("receive_json: %s", msg)
         return msg
 
 
-    def recieve_json2(self):
-        data = self.client.recv(1024).decode('utf-8')
-        print(f"Wiadomość -> {data}")
-        data_json = json.loads(data)
-        return data_json
+    # def receive_json2(self):
+    #     data = self.client.recv(1024).decode('utf-8')
+    #     print(f"Wiadomość -> {data}")
+    #     data_json = json.loads(data)
+    #     return data_json
 
     def set_nickname(self):
+        nickname = None
         while self.running:
             try:
-                data = self.recieve_json()
+                data = self.receive_json()
                 if data.get("type") == "request" and data.get("field") == "nickname":
                     nickname = input("Choose a nickname: ")
                     response = {"type": "nickname",
@@ -51,8 +59,7 @@ class Client:
                     self.nickname = nickname
                     break
             except Exception as e:
-                print(e)
-                traceback.print_exc()
+                logger.exception("set_nickname")
                 self.running = False
                 break
 
@@ -60,15 +67,15 @@ class Client:
     def receive(self):
         while self.running:
             try:
-                data = self.recieve_json()
-                if data.get("type") == "message":
+                data = self.receive_json()
+                if data and data.get("type") == "message":
                     print(f'{data.get("nickname")}: {data.get("text")}')
             except Exception as e:
-                print(e)
-                traceback.print_exc()
+                # traceback.print_exc()
+                logger.exception("receive error")
                 self.running = False
                 break
-        print("Server closed connection.")
+        logger.info("Server closed connection.")
         self.client.close()
 
     def write(self):
@@ -94,14 +101,11 @@ class Client:
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client.connect((self.host, self.port))
 
-        print(1)
         self.set_nickname()
 
-        print(2)
         recive_thread = threading.Thread(target=self.receive)
         recive_thread.start()
 
-        print(3)
         write_thread = threading.Thread(target=self.write)
         write_thread.start()
 
